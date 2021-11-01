@@ -1,0 +1,13 @@
+# Использование отдельных модулей через командную строку
+- `-pn`, `--PROJECT_NAME` - Project name
+- `-sn`, `--SIM_NAME` - Simulation name
+- `-ss`, `--SCREEN_SIZE` - Visualizer windw dimensions
+- `-gs`, `--GRID_SIZE` - Grid dimensions
+- `-gcs`, `--GRID_CELL_SIZE` - Grid cell size in pixels
+- `-svgs`, `--SVG_SCALE` - Image scale
+- `-svgd`, `--SVG_DELTA` - Image delta
+- `-mf`, `--MODEL_FILENAME` - Image filename
+- `-fn`, `--FONT_NAME` - Font name
+- `-aa`, `--AGENTS_AMOUNT` - Maximum simulation agents amount
+- `-psr`, `--PASSENGERS_SPAWN_RECTS` - Rectangle, where agents ar
+- `-g`, `--goal` - Target for all agents
