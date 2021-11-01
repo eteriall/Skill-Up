@@ -1,3 +1,4 @@
+import argparse
 import heapq
 import itertools
 import json
@@ -13,7 +14,7 @@ import numpy as np
 import pygame
 
 from os_activities import save_points, create_new_project
-from utilities import cv_col, get_rects, rect_collision, generate_tile_map
+from utilities import cv_col, get_rects, rect_collision, generate_tile_map, discrete_png
 
 
 def intersects(point, colliders, collider_size=10):
@@ -136,17 +137,33 @@ def run_simulation(project_name,
                                                  range(AGENTS_AMOUNT))) for rect
                                           in PASSENGERS_SPAWN_RECTS)[0])))
 
-    rects = get_rects(
-        f"Projects/{project_name}/Models/{MODEL_FILENAME}",
-        svg_delta=SVG_DELTA,
-        svg_scale=SVG_SCALE
-    )
-    TILE_MAP = generate_tile_map(rects, GRID_SIZE, GRID_CELL_SIZE)
+    if MODEL_FILENAME.endswith('.svg'):
+        DRAW_TYPE = 'svg'
+        rects = get_rects(
+            f"Projects/{project_name}/Models/{MODEL_FILENAME}",
+            svg_delta=SVG_DELTA,
+            svg_scale=SVG_SCALE
+        )
+        TILE_MAP = generate_tile_map(rects, GRID_SIZE, GRID_CELL_SIZE)
 
-    obstacles = tuple(
-        tuple((x, y) if intersects(
-            (x * GRID_CELL_SIZE, y * GRID_CELL_SIZE), rects) else None for y in range(len(TILE_MAP[0]))) for x in
-        range(len(TILE_MAP)))
+        obstacles = tuple(
+            tuple((x, y) if intersects(
+                (x * GRID_CELL_SIZE, y * GRID_CELL_SIZE), rects) else None for y in range(len(TILE_MAP[0]))) for x in
+            range(len(TILE_MAP)))
+    else:
+        DRAW_TYPE = 'png'
+        # background_img = pygame.image.load(f"Projects/{project_name}/Models/bg-{MODEL_FILENAME}").convert_alpha()
+
+        TILE_MAP = discrete_png(
+            f"Projects/{project_name}/Models/{MODEL_FILENAME}",
+            GRID_SIZE,
+            image_delta=SVG_DELTA,
+            image_scale=SVG_SCALE
+        )
+        GRID_SIZE = TILE_MAP.shape
+        obstacles = tuple(
+            tuple((i, j) if TILE_MAP[i][j] else None for j in range(len(TILE_MAP[0]))) for i in
+            range(len(TILE_MAP)))
 
     obstacles = list(filter(lambda x: x is not None, itertools.chain(*obstacles)))
     pygame.init()
@@ -160,7 +177,7 @@ def run_simulation(project_name,
                 'show_tile_map': False,
                 'show_passengers': True}
 
-    simulation_filename = f"Projects/{project_name}/Simulations/{sim_name}.json"
+    simulation_filename = f"Projects/{project_name}/Simulations/{sim_name}"
     while running:
 
         for event in pygame.event.get():
@@ -180,9 +197,14 @@ def run_simulation(project_name,
         screen.fill((255, 255, 255))
 
         # Draw map
-        if settings['show_map']:
-            for rect in rects:
-                pygame.draw.rect(screen, rect[-1], (rect[0], rect[1]))
+
+        if DRAW_TYPE == 'svg':
+            if settings['show_map']:
+                for rect in rects:
+                    pygame.draw.rect(screen, rect[-1], (rect[0], rect[1]))
+        else:
+            pass
+            # screen.blit(background_img, SVG_DELTA)
 
         # Draw colliders
         if settings['show_colliders']:
@@ -240,16 +262,39 @@ def run_simulation(project_name,
         text_to_show = font.render(f"{int(clock.get_fps())} {pos} | Agents-amount: {len(PASSENGERS)}", 0, (0, 0, 0))
         screen.blit(text_to_show, (10, 10))
 
-        pygame.gfxdraw.rectangle(screen,
-                                 ((0, 0), (GRID_SIZE[0] * GRID_CELL_SIZE, GRID_SIZE[1] * GRID_CELL_SIZE)),
-                                 (0, 255, 255))
+        pygame.gfxdraw.circle(screen, goal[0] * GRID_CELL_SIZE, goal[1] * GRID_CELL_SIZE, 30, (255, 0, 255))
         pygame.display.flip()
 
     pygame.quit()
 
 
 if __name__ == "__main__":
-    # create_new_project('TestProject')
-    run_simulation('TestProject', 'TestSimulation',
-                   MODEL_FILENAME='Box2.svg',
-                   SVG_DELTA=(0, 100))
+    parser = argparse.ArgumentParser(description='SkillUp Simulator')
+
+    parser.add_argument('-pn', '--PROJECT_NAME', help='Project name', required=True)
+    parser.add_argument('-sn', '--SIM_NAME', help='Simulation name', required=True)
+
+    parser.add_argument('-ss', '--SCREEN_SIZE', help='Visualizer windw dimensions', required=True)
+    parser.add_argument('-gs', '--GRID_SIZE', help='Grid dimensions', required=True)
+    parser.add_argument('-gcs', '--GRID_CELL_SIZE', help='Grid cell size in pixels', required=True)
+    parser.add_argument('-svgs', '--SVG_SCALE', help='Image scale', required=True)
+    parser.add_argument('-svgd', '--SVG_DELTA', help='Image delta', required=True)
+    parser.add_argument('-mf', '--MODEL_FILENAME', help='Image filename', required=True)
+    parser.add_argument('-fn', '--FONT_NAME', help='Font name', required=True)
+    parser.add_argument('-aa', '--AGENTS_AMOUNT', help='Maximum simulation agents amount', required=True)
+    parser.add_argument('-psr', '--PASSENGERS_SPAWN_RECTS', help='Rectangle, where agents are being spawned',
+                        required=True)
+    parser.add_argument('-g', '--goal', help='Target for all agents', required=True)
+
+    args = vars(parser.parse_args())
+    pn, sn = args['PROJECT_NAME'], args['SIM_NAME']
+    res = {}
+
+    for key in args.keys():
+        if key not in ('PROJECT_NAME', 'SIM_NAME'):
+            try:
+                res[key] = json.loads(args[key])
+            except:
+                res[key] = args[key]
+    run_simulation(args['PROJECT_NAME'], args['SIM_NAME'],
+                   **res)

@@ -2,7 +2,7 @@ import math
 import random
 from typing import Tuple
 from xml.dom import minidom
-
+from PIL import Image
 import numpy as np
 
 
@@ -61,6 +61,15 @@ def intersects(point, colliders, collider_size=10):
     return s
 
 
+def discrete_png(path_to_file, grid_size, image_delta=(0, 0), image_scale=1):
+    img = Image.open(path_to_file)
+    img.resize((int(grid_size[0] * image_scale), int(grid_size[1] * image_scale)), Image.ANTIALIAS)
+    thresh = 10
+    fn = lambda x: 255 if x > thresh else 0
+    r = img.convert('L').point(fn, mode='1')
+    return np.asarray(r).transpose()
+
+
 def get_rects(path_to_file, svg_delta=(0, 0), svg_scale=1):
     # Load all colliders
     doc = minidom.parse(open(path_to_file))
@@ -87,3 +96,5 @@ def get_rects(path_to_file, svg_delta=(0, 0), svg_scale=1):
         )
     )
     return rects
+
+

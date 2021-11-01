@@ -1,0 +1,5 @@
+easygui
+heapq
+pygame
+numpy
+colour

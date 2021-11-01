@@ -1,8 +1,11 @@
 import json
 import os
+import pathlib
 from tkinter import *
 import tkinter as tk
+from tkinter import simpledialog
 from tkinter.filedialog import askopenfilename
+from subprocess import Popen
 
 from os_activities import create_new_project
 import glob
@@ -10,7 +13,6 @@ import glob
 from simulation import run_simulation
 from visualize import run_visualization
 from shutil import copyfile
-import easygui
 
 
 class Project:
@@ -23,7 +25,7 @@ class Project:
 
     def update_simulations(self):
         self._simulations = list(
-            map(lambda x: x.split('/')[-1][:-5], glob.glob(f'Projects/{self.name}/Simulations/*.json')))
+            map(lambda x: x.split('/')[-1], glob.glob(f'Projects/{self.name}/Simulations/*')))
 
     @property
     def simulations(self):
@@ -33,15 +35,16 @@ class Project:
     @property
     def models(self):
         self.update_models()
-        print(self._models)
         return self._models
 
     def update_models(self):
         self._models = list(
-            map(lambda x: x.split('/')[-1][:-4], glob.glob(f'Projects/{self.name}/Models/*.svg')))
+            map(lambda x: x.split('/')[-1], glob.glob(f'Projects/{self.name}/Models/*')))
 
-    def get_simulation_path(self, name):
-        pass
+    def get_sim_meta(self, sim_name):
+        path = f'Projects/{self.name}/Simulations/{sim_name}'
+        meta = json.load(open(path, mode='r'))['meta']
+        return meta
 
     def run_simulation(self, simulation_name):
         run_simulation(self.name, simulation_name)
@@ -55,35 +58,8 @@ class Project:
                                    multiple=True,
                                    title="File Selector")
 
-        filename(filename, f'Projects/{self.name}/Models')
+        copyfile(filename, f'Projects/{self.name}/Models')
         self.update_models()
-
-
-class EntryWithPlaceholder(tk.Entry):
-    def __init__(self, master=None, placeholder="PLACEHOLDER", color='grey'):
-        super().__init__(master)
-
-        self.placeholder = placeholder
-        self.placeholder_color = color
-        self.default_fg_color = self['fg']
-
-        self.bind("<FocusIn>", self.foc_in)
-        self.bind("<FocusOut>", self.foc_out)
-
-        self.put_placeholder()
-
-    def put_placeholder(self):
-        self.insert(0, self.placeholder)
-        self['fg'] = self.placeholder_color
-
-    def foc_in(self, *args):
-        if self['fg'] == self.placeholder_color:
-            self.delete('0', 'end')
-            self['fg'] = self.default_fg_color
-
-    def foc_out(self, *args):
-        if not self.get():
-            self.put_placeholder()
 
 
 class SimulationSettingsWindow:
@@ -94,34 +70,54 @@ class SimulationSettingsWindow:
 
         Label(self.w, text='Create new simulation', font=('rosatom', 16, 'bold'), pady=5).pack()
 
-        self.fields = {'SCREEN_SIZE': (500, 500),
-                       'GRID_SIZE': (50, 50),
-                       'GRID_CELL_SIZE': 10,
-                       'SVG_SCALE': 1,
-                       'SVG_DELTA': (0, 0),
-                       'MODEL_FILENAME': None,
-                       'FONT_NAME': 'Arial',
-                       'AGENTS_AMOUNT': 30,
-                       'PASSENGERS_SPAWN_RECTS': ((25, 45, 12, 2),),
-                       'goal': (1, 1)}
+        self.fields = {
+            'SIM_NAME': "",
+            'SCREEN_SIZE': (500, 500),
+            'GRID_SIZE': (50, 50),
+            'GRID_CELL_SIZE': 10,
+            'SVG_SCALE': 1,
+            'SVG_DELTA': (0, 0),
+            'FONT_NAME': 'Arial',
+            'AGENTS_AMOUNT': 30,
+            'PASSENGERS_SPAWN_RECTS': ((25, 45, 12, 2),),
+            'goal': (1, 1)}
         self.box = None
 
         # Create main form
-        ents = self.makeform(self.w)
+        self.ents = self.makeform(self.w)
 
-        self.w.bind('<Return>', (lambda event, e=ents: self.fetch(e)))
-        b1 = tk.Button(self.w, text='Show',
-                       command=(lambda e=ents: self.fetch(e)))
+        self.w.bind('<Return>', self.launch_sim)
+        b1 = tk.Button(self.w, text='Launch',
+                       command=self.launch_sim)
         b1.pack(side=tk.LEFT, padx=5, pady=5)
-        b2 = tk.Button(self.w, text='Quit', command=self.w.quit)
+        b2 = tk.Button(self.w, text='Quit', command=self.w.destroy)
         b2.pack(side=tk.LEFT, padx=5, pady=5)
+
+        # Add items to ListBox
         self.update_models()
 
-    def fetch(self, entries):
-        for entry in entries:
+        # Set cursor selector to first element
+        self.box.selection_clear(0, END)
+        self.box.selection_set(0)
+
+    def fetch(self):
+        s = {}
+        for entry in self.ents:
             field = entry[0]
             text = entry[1].get()
-            print('%s: "%s"' % (field, text))
+            s[field] = text
+        s['MODEL_FILENAME'] = self.box.get(self.box.curselection())
+        return s
+
+    def launch_sim(self):
+        data = self.fetch()
+        s = f'python3 simulation.py -pn {self.project.name} -sn {data["SIM_NAME"]} -ss "{data["SCREEN_SIZE"]}" -gs "{data["GRID_SIZE"]}"' \
+            f' -gcs "{data["GRID_CELL_SIZE"]}" -svgs "{data["SVG_SCALE"]}" -svgd "{data["SVG_DELTA"]}"' \
+            f' -mf "{data["MODEL_FILENAME"]}" -fn "{data["FONT_NAME"]}" -aa "{data["AGENTS_AMOUNT"]}"' \
+            f' -psr "{data["PASSENGERS_SPAWN_RECTS"]}" -g "{data["goal"]}"'
+        path = pathlib.Path(__file__).parent.resolve()
+        print(s)
+        os.system(s)
 
     def update_models(self):
         self.box.delete(0, 'end')
@@ -139,7 +135,6 @@ class SimulationSettingsWindow:
         row.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
         lab.pack(side=tk.LEFT)
         self.box.pack(side=tk.RIGHT, expand=tk.YES, fill=tk.X)
-        entries.append(('', self.box))
 
         # Add NewModel button
         Button(root, text='New model', width=30, command=self.project.add_new_model).pack()
@@ -164,13 +159,13 @@ class SimulationsWindow:
         self.w = Tk()
         self.w.geometry("250x263")
 
-        Label(self.w, text='Select simulation to visualize', font=('rosatom', 16)).pack()
+        Label(self.w, text='Select simulation to visualize', font=('rosatom', 16, 'bold')).pack()
 
         # Create SelectBox
-        self.box = Listbox(self.w, selectmode=EXTENDED)
+        self.box = Listbox(self.w, selectmode=EXTENDED, height=5, width=22)
         self.box.pack()
 
-        Button(self.w, command=self.run_new_simulation, text='Launch Visualizer', width=20).pack()
+        Button(self.w, command=self.visualize_simulation, text='Launch Visualizer', width=20).pack()
         Button(self.w, command=self.run_new_simulation, text='Create new simulation', width=20).pack()
 
         # Add scroll
@@ -179,12 +174,16 @@ class SimulationsWindow:
         # box.config(yscrollcommand=scroll.set)
 
         self.box.bind('<<ListboxSelect>>', self.on_box_select)
+        self.box.selection_clear(0, END)
+
+        if len(self.project.simulations):
+            self.box.selection_set(0)
 
         self.load_simulations()
         self.simulation_settings_window = None
 
     def on_box_select(self, *args):
-        pass
+        print('a')
 
     def load_simulations(self):
         # Clear the previous values
@@ -197,8 +196,15 @@ class SimulationsWindow:
         for item in simulations:
             self.box.insert(END, item)
 
+    def visualize_simulation(self):
+        sim_name = self.box.get(self.box.curselection())
+
+        path = pathlib.Path(__file__).parent.resolve()
+        os.system(f"python3 {path}/visualize.py -pn '{self.project.name}' -sn '{sim_name}'")
+
     def run_new_simulation(self):
-        self.simulation_settings_window = SimulationSettingsWindow(self.project)
+
+        self.simulation_settings_window = SimulationSettingsWindow(self.project, )
 
 
 class MainWindow:
@@ -209,19 +215,17 @@ class MainWindow:
         self.selected_project.set("<- Select project")
 
         # Create SelectBox
-        self.projects_box = Listbox(selectmode=EXTENDED)
-        self.projects_box.pack(side=LEFT)
+        self.box = Listbox(self.w, selectmode=EXTENDED)
+        self.box.pack(side=LEFT)
 
         # Add scroll
         # scroll = Scrollbar(command=box.yview)
         # scroll.pack(side=LEFT, fill=Y)
         # box.config(yscrollcommand=scroll.set)
 
-        self.projects_box.bind('<<ListboxSelect>>', self.project_box_on_select)
+        self.box.bind('<<ListboxSelect>>', self.project_box_on_select)
 
-        # Add items to SelectBox
-        for item in get_projects():
-            self.projects_box.insert(END, item)
+        self.update_box()
 
         f = Frame()
         f.pack(side=LEFT, padx=10)
@@ -232,32 +236,43 @@ class MainWindow:
         Button(f, text="Open Project", command=self.open_project) \
             .pack(fill=X)
 
+        Button(f, text="Create new project", command=self.create_project) \
+            .pack(fill=X)
         """_ = Label(f, text='---- or ----', pady=2).pack()
         self.new_project_name = Entry(f)
         self.new_project_name.pack()
 
-        Button(f, text="Create new project", command=self.create_project) \
-            .pack(fill=X)"""
+        """
 
         self.simulation_window = None
+
+    def update_box(self):
+        # Add items to SelectBox
+        self.box.delete(0, 'end')
+        for item in get_projects():
+            self.box.insert(END, item)
 
     def run(self):
         self.w.mainloop()
 
     def project_box_on_select(self, *args):
-        self.selected_project.set(self.projects_box.get(self.projects_box.curselection()))
+        self.selected_project.set(self.box.get(self.box.curselection()))
         # selected_project_label.setvar('font', ('Rosatom', 16, 'bold'))
         # selected_project_label.pack()
 
     def create_project(self):
-        new_name = self.new_project_name.get().strip()
-        if new_name != '':
-            create_new_project(new_name)
+        project_name = simpledialog.askstring("New project", "Choose a name for your project",
+                                              parent=self.w)
+        if project_name is not None:
+            create_new_project(project_name)
+        else:
+            return
+        self.update_box()
 
     def open_project(self, project_name=None):
         if project_name is None:
             try:
-                project_name = self.projects_box.get(self.projects_box.curselection())
+                project_name = self.box.get(self.box.curselection())
             except tk.TclError:
                 return
         self.simulation_window = SimulationsWindow(project_name)
